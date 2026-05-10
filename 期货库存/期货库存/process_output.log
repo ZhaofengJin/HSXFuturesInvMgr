@@ -1,0 +1,17 @@
+Working directory: C:\Users\77188\Desktop\期货库存
+Futures file: 期货库存明细.xlsx
+Yehui file: 烨辉库存表.xlsx
+Futures sheets: ['期货排程', 'Sheet2', 'Sheet3']
+Yehui sheets: ['IMFGR190_有主一級']
+Schedule sheet max_row: 8
+Schedule sheet max_col: 28
+Using column 1 as order column
+Found 7 orders
+Yehui sheet max_row: 1387
+Loaded 128 records from Yehui
+Matched: 0
+Not matched: 7
+Customers: []
+
+Output saved to: FuturesInventory_Result.xlsx
+Sheets: ['Not Matched']
