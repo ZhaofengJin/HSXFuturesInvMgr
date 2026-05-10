@@ -94,7 +94,6 @@ def format_summary_json(summary, exit_code, error_msg=None):
         "version": "5.0",
         "timestamp": datetime.now().isoformat(),
         "exit_code": exit_code,
-        "status": "error" if exit_code != 0 else "success",
     }
 
     if error_msg:
@@ -102,6 +101,14 @@ def format_summary_json(summary, exit_code, error_msg=None):
 
     if summary:
         result["data"] = summary
+
+    # 状态细分：0=success, 1=error, 2=warning
+    if exit_code == 0:
+        result["status"] = "success"
+    elif exit_code == 2:
+        result["status"] = "warning"
+    else:
+        result["status"] = "error"
 
     return json.dumps(result, indent=2, ensure_ascii=False)
 
@@ -139,14 +146,11 @@ def main(argv=None):
     # ---------- 1. 环境初始化 ----------
     base_dir = args.base_dir
     if base_dir is None:
+        # 先尝试默认路径
         base_dir = find_base_dir(DEFAULT_BASE_DIR, DIR_NAME_KEYWORD)
+        # 默认路径找不到时，回退到当前脚本所在目录
         if not base_dir:
-            msg = "Error: Directory not found"
-            if json_mode:
-                print(format_summary_json(None, 1, msg))
-            else:
-                print(msg)
-            return 1
+            base_dir = os.path.dirname(os.path.abspath(__file__))
 
     os.chdir(base_dir)
     results_dir = setup_directories(base_dir)
@@ -154,11 +158,14 @@ def main(argv=None):
     futures_files, yehui_files = find_files(results_dir, base_dir)
 
     if not futures_files or not yehui_files:
-        msg = "Error: Excel files not found"
+        msg = "Error: Excel files not found in " + results_dir + " or " + base_dir
         if json_mode:
             print(format_summary_json(None, 1, msg))
         else:
             print(msg)
+            print("提示：请确认以下文件存在")
+            print("  - results/期货库存明细.xlsx")
+            print("  - results/烨辉库存表.xlsx")
         return 1
 
     futures_file = futures_files[0]

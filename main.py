@@ -81,9 +81,9 @@ def main(base_dir=None):
     # ---------- 1. 环境初始化 ----------
     if base_dir is None:
         base_dir = find_base_dir(DEFAULT_BASE_DIR, DIR_NAME_KEYWORD)
+        # 默认路径找不到时，回退到当前脚本所在目录
         if not base_dir:
-            print("Error: Directory not found")
-            return 1
+            base_dir = os.path.dirname(os.path.abspath(__file__))
 
     os.chdir(base_dir)
     results_dir = setup_directories(base_dir)
@@ -91,7 +91,10 @@ def main(base_dir=None):
     futures_files, yehui_files = find_files(results_dir, base_dir)
 
     if not futures_files or not yehui_files:
-        print("Error: Excel files not found")
+        print("Error: Excel files not found in " + results_dir + " or " + base_dir)
+        print("提示：请确认以下文件存在")
+        print("  - results/期货库存明细.xlsx")
+        print("  - results/烨辉库存表.xlsx")
         return 1
 
     futures_file = futures_files[0]

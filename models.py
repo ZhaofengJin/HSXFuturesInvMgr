@@ -21,7 +21,18 @@ class CoilRecord:
     row_idx: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        # 手动构建字典，避免 asdict 深拷贝 openpyxl 样式对象导致递归
+        return {
+            "order_no": self.order_no,
+            "coil_no": self.coil_no,
+            "warehouse": self.warehouse,
+            "transfer_date": self.transfer_date,
+            "entry_date": self.entry_date,
+            "customer": self.customer,
+            "row_data": self.row_data,
+            "row_idx": self.row_idx,
+            # fill 是 openpyxl 对象，不序列化
+        }
 
 
 @dataclass

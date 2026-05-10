@@ -130,14 +130,18 @@ class TestCliMain(unittest.TestCase):
         mock_wb.save.assert_not_called()
 
     @patch("cli.find_base_dir")
-    def test_missing_directory(self, mock_find):
-        """测试目录不存在时的错误处理"""
+    @patch("cli.find_files")
+    @patch("os.chdir")
+    def test_fallback_to_script_dir(self, mock_chdir, mock_find_files, mock_find):
+        """测试默认路径找不到时回退到脚本所在目录"""
         mock_find.return_value = None
+        mock_find_files.return_value = ([], [])
         with patch("sys.stdout", new=StringIO()) as fake_out:
             code = main([])
         self.assertEqual(code, 1)
         output = fake_out.getvalue()
-        self.assertIn("Directory not found", output)
+        # 回退到脚本目录后，因找不到文件而报错
+        self.assertIn("Excel files not found", output)
 
     @patch("cli.find_base_dir")
     @patch("cli.find_files")
