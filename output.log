@@ -1,0 +1,33 @@
+Working directory: C:\Users\77188\Desktop\期货库存
+Testing imports...
+  openpyxl OK: 3.1.5
+
+Files in directory:
+  FuturesInventory_Result.xlsx
+  output.log
+  processing_log.txt
+  python-installer.exe
+  run-tool.ps1
+  run_test.bat
+  test.py
+  test2.py
+  test3.py
+  使用说明.md
+  启动工具.bat
+  安装Python.bat
+  期货库存工具.py
+  期货库存明细.xlsx
+  烨辉库存表.xlsx
+  运行工具.ps1
+
+Testing file loading...
+  Futures files: ['期货库存明细.xlsx']
+  Yehui files: ['烨辉库存表.xlsx']
+
+  Loading: 期货库存明细.xlsx
+  Sheets: ['期货排程', 'Sheet2', 'Sheet3']
+
+  Loading: 烨辉库存表.xlsx
+  Sheets: ['IMFGR190_有主一級']
+
+All tests passed!
