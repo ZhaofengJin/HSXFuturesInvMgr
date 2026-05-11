@@ -43,6 +43,14 @@ class ScheduleRecord:
     date: Any = None
     row: int = 0
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "order_no": self.order_no,
+            "customer": self.customer,
+            "date": self.date,
+            "row": self.row,
+        }
+
 
 @dataclass
 class YehuiRecord:
