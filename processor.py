@@ -127,11 +127,15 @@ class InventoryProcessor:
             if customer:
                 customer_groups[customer].append(("new", new_info))
 
-        # 排序：按订单号排序，相同类型优先 preserved
+        # 排序：按订单号排序，相同订单号内 preserved/updated 按原文件行号混合排列，
+        # new 行追加在订单号末尾（保持添加顺序，依赖 Python sort 稳定性）
         for customer in customer_groups:
             customer_groups[customer].sort(
-                key=lambda x: (x[1].get("order_no", "") if isinstance(x[1], dict) else x[1].order_no,
-                               0 if x[0] == "preserved" else 1)
+                key=lambda x: (
+                    x[1].get("order_no", "") if isinstance(x[1], dict) else x[1].order_no,
+                    0 if x[0] in ("preserved", "updated") else 1,
+                    x[1].get("row_idx", 999999) if isinstance(x[1], dict) else getattr(x[1], "row_idx", 999999),
+                )
             )
 
         return dict(customer_groups)

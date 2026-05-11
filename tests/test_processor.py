@@ -152,6 +152,72 @@ class TestInventoryProcessor(unittest.TestCase):
         self.assertEqual(items[0][1].order_no, "ORD001")
         self.assertEqual(items[1][1].order_no, "ORD002")
 
+    def test_mixed_rows_keep_original_order(self):
+        """同一订单号内，preserved/updated 按原文件行号混合排列，保持原有顺序"""
+        preserved = [
+            CoilRecord(order_no="ORD001", coil_no="COIL001", warehouse="W1", customer="无锡晟明", row_idx=2),
+            CoilRecord(order_no="ORD001", coil_no="COIL003", warehouse="W2", customer="无锡晟明", row_idx=4),
+        ]
+        updated = [
+            {"order_no": "ORD001", "coil_no": "COIL002", "customer": "无锡晟明", "new_warehouse": "W3", "row_idx": 3},
+            {"order_no": "ORD001", "coil_no": "COIL004", "customer": "无锡晟明", "new_warehouse": "W4", "row_idx": 5},
+        ]
+
+        groups = self.processor.group_by_customer(preserved, updated, [], {})
+        items = groups["无锡晟明"]
+
+        # 验证顺序：COIL001(row2,preserved), COIL002(row3,updated), COIL003(row4,preserved), COIL004(row5,updated)
+        coil_nos = [item[1].coil_no if hasattr(item[1], 'coil_no') else item[1].get('coil_no') for item in items]
+        self.assertEqual(coil_nos, ["COIL001", "COIL002", "COIL003", "COIL004"])
+
+    def test_new_rows_appended_after_order_data(self):
+        """新增行追加在相同订单号已有数据的下方"""
+        preserved = [
+            CoilRecord(order_no="ORD001", coil_no="COIL001", warehouse="W1", customer="无锡晟明", row_idx=2),
+        ]
+        updated = [
+            {"order_no": "ORD001", "coil_no": "COIL002", "customer": "无锡晟明", "new_warehouse": "W3", "row_idx": 3},
+        ]
+        new = [
+            {"order_no": "ORD001", "coil_no": "COIL005", "customer": "无锡晟明", "data": {}},
+            {"order_no": "ORD001", "coil_no": "COIL006", "customer": "无锡晟明", "data": {}},
+        ]
+
+        groups = self.processor.group_by_customer(preserved, updated, new, {})
+        items = groups["无锡晟明"]
+
+        # 验证顺序：preserved(row2), updated(row3), new, new
+        types = [item[0] for item in items]
+        self.assertEqual(types, ["preserved", "updated", "new", "new"])
+
+        # 验证钢卷号顺序
+        coil_nos = [item[1].coil_no if hasattr(item[1], 'coil_no') else item[1].get('coil_no') for item in items]
+        self.assertEqual(coil_nos, ["COIL001", "COIL002", "COIL005", "COIL006"])
+
+    def test_new_rows_appended_only_when_same_order_no(self):
+        """新增行只追加在相同订单号下方，不同订单号按原有顺序排列"""
+        preserved = [
+            CoilRecord(order_no="ORD001", coil_no="COIL001", warehouse="W1", customer="无锡晟明", row_idx=2),
+            CoilRecord(order_no="ORD002", coil_no="COIL002", warehouse="W2", customer="无锡晟明", row_idx=3),
+        ]
+        new = [
+            {"order_no": "ORD001", "coil_no": "COIL003", "customer": "无锡晟明", "data": {}},
+            {"order_no": "ORD002", "coil_no": "COIL004", "customer": "无锡晟明", "data": {}},
+        ]
+
+        groups = self.processor.group_by_customer(preserved, [], new, {})
+        items = groups["无锡晟明"]
+
+        # ORD001 的数据在一起，ORD002 的数据在一起
+        order_nos = [item[1].order_no if hasattr(item[1], 'order_no') else item[1].get('order_no') for item in items]
+        self.assertEqual(order_nos, ["ORD001", "ORD001", "ORD002", "ORD002"])
+
+        # 每个订单号内：preserved 在前，new 在后
+        self.assertEqual(items[0][0], "preserved")  # ORD001
+        self.assertEqual(items[1][0], "new")        # ORD001
+        self.assertEqual(items[2][0], "preserved")  # ORD002
+        self.assertEqual(items[3][0], "new")        # ORD002
+
     # ---------- 工具方法测试 ----------
 
     def test_build_coil_set(self):
