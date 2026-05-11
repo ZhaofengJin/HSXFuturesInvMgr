@@ -119,18 +119,20 @@ class TestExcelReader(unittest.TestCase):
         self.assertEqual(coil_info["COIL002"]["warehouse"], "W2")
 
     def test_read_customer_data(self):
-        """测试读取客户 Sheet 数据"""
+        """测试读取客户 Sheet 数据（包含修改日期列）"""
         customer_ws = MagicMock()
-        customer_ws.max_column = len(STANDARD_HEADERS)
+        customer_ws.max_column = len(FULL_HEADERS)
         customer_ws.max_row = 3
         customer_ws.title = "无锡晟明"
 
         def customer_cell(row, column):
             m = MagicMock()
-            headers_map = {i + 1: h for i, h in enumerate(STANDARD_HEADERS)}
+            headers_map = {i + 1: h for i, h in enumerate(FULL_HEADERS)}
             values = {
                 (2, 3): "ORD001", (2, 4): "COIL001", (2, 12): "W1",
+                (2, 24): "2026/4/15",  # 修改日期
                 (3, 3): "ORD001", (3, 4): "COIL002", (3, 12): "W2",
+                (3, 24): "2026/4/16",  # 修改日期
             }
             if row == 1:
                 m.value = headers_map.get(column)
@@ -148,6 +150,8 @@ class TestExcelReader(unittest.TestCase):
         self.assertEqual(rows[0].coil_no, "COIL001")
         self.assertEqual(rows[0].warehouse, "W1")
         self.assertEqual(rows[0].customer, "无锡晟明")
+        self.assertEqual(rows[0].modify_date, "2026/4/15")
+        self.assertEqual(rows[1].modify_date, "2026/4/16")
 
 
 class TestExcelWriter(unittest.TestCase):
@@ -169,18 +173,25 @@ class TestExcelWriter(unittest.TestCase):
         self.assertTrue(mock_ws.cell.called)
 
     def test_write_preserved_row(self):
-        """测试写入保留行"""
+        """测试写入保留行应保留原有修改日期和颜色"""
         mock_ws = MagicMock()
         writer = ExcelWriter(self.mock_wb)
 
+        # 模拟一个带修改日期和颜色的保留行
+        from openpyxl.styles import PatternFill
+        orange_fill = PatternFill(start_color="FFA500", end_color="FFA500", fill_type="solid")
         row_info = {
             "row_data": ["2026/4/20", "无锡晟明", "ORD001", "COIL001"] + [""] * 19,
-            "fill": None,
+            "fill": orange_fill,
+            "modify_date": "2026/4/15",
         }
         writer.write_preserved_row(mock_ws, 2, row_info)
 
-        # 验证至少写入了数据
-        self.assertTrue(mock_ws.cell.called)
+        # 验证修改日期列（第24列）写入了原有日期，而不是被清空
+        mod_cell = mock_ws.cell(row=2, column=len(FULL_HEADERS))
+        self.assertEqual(mod_cell.value, "2026/4/15")
+        # 验证颜色被保留
+        self.assertEqual(mod_cell.fill, orange_fill)
 
     def test_write_updated_row(self):
         """测试写入更新行（橙色）"""

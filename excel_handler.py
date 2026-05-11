@@ -181,9 +181,9 @@ class ExcelReader:
         rows: List[CoilRecord] = []
 
         for row_idx in range(2, ws.max_row + 1):
-            # 只读取标准列数的数据
+            # 读取标准列数 + 修改日期列的数据
             row_data = []
-            for col_idx in range(1, STANDARD_COL_COUNT + 1):
+            for col_idx in range(1, FULL_COL_COUNT + 1):
                 row_data.append(ws.cell(row=row_idx, column=col_idx).value)
 
             order_no = ws.cell(row=row_idx, column=col_order).value
@@ -195,6 +195,7 @@ class ExcelReader:
             transfer = ws.cell(row=row_idx, column=col_transfer).value
             entry = ws.cell(row=row_idx, column=col_entry).value
             fill = ws.cell(row=row_idx, column=4).fill
+            modify_date = ws.cell(row=row_idx, column=FULL_COL_COUNT).value
 
             record = CoilRecord(
                 order_no=str(order_no).strip(),
@@ -206,6 +207,7 @@ class ExcelReader:
                 row_data=row_data,
                 fill=fill if fill else None,
                 row_idx=row_idx,
+                modify_date=modify_date,
             )
             rows.append(record)
 
@@ -233,11 +235,12 @@ class ExcelWriter:
         return ws
 
     def write_preserved_row(self, ws, row_idx: int, row_info: Dict[str, Any]):
-        """写入保留行（原样保留，可选原有填色）"""
+        """写入保留行（原样保留颜色和修改日期）"""
         row_data = row_info.get("row_data", [])
         fill = row_info.get("fill")
+        modify_date = row_info.get("modify_date")
 
-        for col_idx in range(1, STANDARD_COL_COUNT + 1):
+        for col_idx in range(1, FULL_COL_COUNT + 1):
             cell = ws.cell(row=row_idx, column=col_idx)
             if col_idx - 1 < len(row_data):
                 cell.value = row_data[col_idx - 1]
@@ -250,9 +253,17 @@ class ExcelWriter:
                 except Exception:
                     pass
 
-        # 修改日期列留空
-        mod_cell = ws.cell(row=row_idx, column=FULL_COL_COUNT)
-        mod_cell.border = THIN_BORDER
+        # 修改日期列：保留原有日期（若 row_data 已包含则不再覆盖，否则单独写入）
+        if not row_data or len(row_data) < FULL_COL_COUNT:
+            mod_cell = ws.cell(row=row_idx, column=FULL_COL_COUNT)
+            if modify_date is not None:
+                mod_cell.value = modify_date
+            mod_cell.border = THIN_BORDER
+            if fill and hasattr(fill, "fgColor") and fill.fgColor:
+                try:
+                    mod_cell.fill = fill
+                except Exception:
+                    pass
 
     def write_updated_row(self, ws, row_idx: int, update_info: Dict[str, Any], modification_date: str):
         """写入更新行（橙色 - 仓别变动）"""

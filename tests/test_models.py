@@ -33,6 +33,7 @@ class TestCoilRecord(unittest.TestCase):
         self.assertIsNone(record.entry_date)
         self.assertEqual(record.customer, "")
         self.assertEqual(record.row_data, [])
+        self.assertIsNone(record.modify_date)
 
     def test_to_dict(self):
         record = CoilRecord(

@@ -19,6 +19,7 @@ class CoilRecord:
     row_data: List[Any] = field(default_factory=list)
     fill: Any = None
     row_idx: int = 0
+    modify_date: Any = None  # 修改日期（第24列），保留行需原样保留
 
     def to_dict(self) -> Dict[str, Any]:
         # 手动构建字典，避免 asdict 深拷贝 openpyxl 样式对象导致递归
@@ -31,6 +32,7 @@ class CoilRecord:
             "customer": self.customer,
             "row_data": self.row_data,
             "row_idx": self.row_idx,
+            "modify_date": self.modify_date,
             # fill 是 openpyxl 对象，不序列化
         }
 
