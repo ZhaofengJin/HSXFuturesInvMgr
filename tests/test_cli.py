@@ -129,26 +129,22 @@ class TestCliMain(unittest.TestCase):
         # dry-run 不保存
         mock_wb.save.assert_not_called()
 
-    @patch("cli.find_base_dir")
     @patch("cli.find_files")
     @patch("os.chdir")
-    def test_fallback_to_script_dir(self, mock_chdir, mock_find_files, mock_find):
-        """测试默认路径找不到时回退到脚本所在目录"""
-        mock_find.return_value = None
+    def test_fallback_to_script_dir(self, mock_chdir, mock_find_files):
+        """测试无参数时默认使用脚本所在目录"""
         mock_find_files.return_value = ([], [])
         with patch("sys.stdout", new=StringIO()) as fake_out:
             code = main([])
         self.assertEqual(code, 1)
         output = fake_out.getvalue()
-        # 回退到脚本目录后，因找不到文件而报错
+        # 默认使用脚本目录后，因找不到文件而报错
         self.assertIn("Excel files not found", output)
 
-    @patch("cli.find_base_dir")
     @patch("cli.find_files")
     @patch("os.chdir")
-    def test_missing_excel_files(self, mock_chdir, mock_find_files, mock_find_dir):
+    def test_missing_excel_files(self, mock_chdir, mock_find_files):
         """测试 Excel 文件不存在时的错误处理"""
-        mock_find_dir.return_value = "/tmp/test"
         mock_find_files.return_value = ([], [])
         with patch("sys.stdout", new=StringIO()) as fake_out:
             code = main([])

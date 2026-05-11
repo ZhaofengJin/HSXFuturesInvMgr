@@ -6,7 +6,9 @@
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
 # ==================== 路径配置 ====================
-DEFAULT_BASE_DIR = r"C:\Users\77188\Desktop"
+# 默认基础目录：None 表示使用脚本所在目录（当前运行路径），
+# 确保在 macOS/Windows 下文件均保存在当前运行路径，而非固定桌面路径。
+DEFAULT_BASE_DIR = None
 DIR_NAME_KEYWORD = "期货"
 RESULTS_SUBDIR = "results"
 

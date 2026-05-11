@@ -26,8 +26,7 @@ import os
 import sys
 from datetime import datetime
 
-from config import DEFAULT_BASE_DIR, DIR_NAME_KEYWORD
-from utils import find_base_dir
+from config import DIR_NAME_KEYWORD
 from main import find_files, setup_directories, backup_original_file
 from excel_handler import ExcelReader, ExcelWriter
 from processor import InventoryProcessor
@@ -146,11 +145,8 @@ def main(argv=None):
     # ---------- 1. 环境初始化 ----------
     base_dir = args.base_dir
     if base_dir is None:
-        # 先尝试默认路径
-        base_dir = find_base_dir(DEFAULT_BASE_DIR, DIR_NAME_KEYWORD)
-        # 默认路径找不到时，回退到当前脚本所在目录
-        if not base_dir:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
+        # 默认使用当前脚本所在目录，确保 macOS/Windows 下文件均保存在当前运行路径
+        base_dir = os.path.dirname(os.path.abspath(__file__))
 
     os.chdir(base_dir)
     results_dir = setup_directories(base_dir)

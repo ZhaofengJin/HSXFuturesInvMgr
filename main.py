@@ -29,7 +29,7 @@ from config import (
     FUTURES_FILE_PATTERN, YEHUI_FILE_PATTERN, BACKUP_FILE_NAME,
     SCHEDULE_SHEET_NAME, SKIP_SHEET_NAMES,
 )
-from utils import format_date, safe_sheet_name, find_base_dir, is_temp_or_backup_file
+from utils import format_date, safe_sheet_name, is_temp_or_backup_file
 from excel_handler import ExcelReader, ExcelWriter
 from processor import InventoryProcessor
 
@@ -80,10 +80,8 @@ def main(base_dir=None):
 
     # ---------- 1. 环境初始化 ----------
     if base_dir is None:
-        base_dir = find_base_dir(DEFAULT_BASE_DIR, DIR_NAME_KEYWORD)
-        # 默认路径找不到时，回退到当前脚本所在目录
-        if not base_dir:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
+        # 默认使用当前脚本所在目录，确保 macOS/Windows 下文件均保存在当前运行路径
+        base_dir = os.path.dirname(os.path.abspath(__file__))
 
     os.chdir(base_dir)
     results_dir = setup_directories(base_dir)
