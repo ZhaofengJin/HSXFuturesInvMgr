@@ -31,7 +31,7 @@ from config import (
 )
 from utils import format_date, safe_sheet_name, is_temp_or_backup_file
 from excel_handler import ExcelReader, ExcelWriter
-from processor import InventoryProcessor
+from processor import InventoryProcessor, ScheduleRecord
 
 
 def find_files(results_dir, current_dir):

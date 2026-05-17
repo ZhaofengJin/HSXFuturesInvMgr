@@ -49,6 +49,21 @@ class TestCoilRecord(unittest.TestCase):
         self.assertEqual(d["coil_no"], "COIL001")
         self.assertEqual(d["warehouse"], "W1")
 
+    def test_to_dict_includes_fill(self):
+        """to_dict 必须包含 fill，否则保留行颜色会在 cli.py 传递时丢失"""
+        from openpyxl.styles import PatternFill
+        orange_fill = PatternFill(start_color="FFA500", end_color="FFA500", fill_type="solid")
+        record = CoilRecord(
+            order_no="ORD001",
+            coil_no="COIL001",
+            warehouse="W1",
+            fill=orange_fill,
+            modify_date="2026/4/15",
+        )
+        d = record.to_dict()
+        self.assertEqual(d["fill"], orange_fill)
+        self.assertEqual(d["modify_date"], "2026/4/15")
+
 
 class TestScheduleRecord(unittest.TestCase):
     """测试期货排程记录模型"""

@@ -33,7 +33,7 @@ class CoilRecord:
             "row_data": self.row_data,
             "row_idx": self.row_idx,
             "modify_date": self.modify_date,
-            # fill 是 openpyxl 对象，不序列化
+            "fill": self.fill,
         }
 
 

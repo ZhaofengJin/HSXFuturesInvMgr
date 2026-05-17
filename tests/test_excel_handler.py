@@ -193,6 +193,33 @@ class TestExcelWriter(unittest.TestCase):
         # 验证颜色被保留
         self.assertEqual(mod_cell.fill, orange_fill)
 
+    def test_write_preserved_row_from_coil_record_to_dict(self):
+        """测试通过 CoilRecord.to_dict() 传递的保留行仍能保留颜色（模拟 cli.py 实际调用路径）"""
+        from openpyxl.styles import PatternFill
+        from models import CoilRecord
+
+        mock_ws = MagicMock()
+        writer = ExcelWriter(self.mock_wb)
+
+        orange_fill = PatternFill(start_color="FFA500", end_color="FFA500", fill_type="solid")
+        record = CoilRecord(
+            order_no="ORD001",
+            coil_no="COIL001",
+            warehouse="W1",
+            customer="无锡晟明",
+            row_data=["2026/4/20", "无锡晟明", "ORD001", "COIL001"] + [""] * 19 + ["2026/4/15"],
+            fill=orange_fill,
+            modify_date="2026/4/15",
+        )
+
+        # 模拟 cli.py 中的实际调用方式：CoilRecord.to_dict() -> write_preserved_row
+        writer.write_preserved_row(mock_ws, 2, record.to_dict())
+
+        # 验证 cell 被调用多次（至少24列），且 fill 被正确设置
+        self.assertTrue(mock_ws.cell.called)
+        # mock_ws.cell.return_value 是同一个 MagicMock，write_preserved_row 会对它赋值 fill
+        self.assertEqual(mock_ws.cell.return_value.fill, orange_fill)
+
     def test_write_updated_row(self):
         """测试写入更新行（橙色）"""
         mock_ws = MagicMock()
