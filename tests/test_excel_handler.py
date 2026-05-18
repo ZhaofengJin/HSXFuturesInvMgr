@@ -6,6 +6,8 @@ TDD: 先写测试，后实现
 
 import unittest
 from unittest.mock import MagicMock, patch, PropertyMock
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from excel_handler import ExcelReader, ExcelWriter, resolve_col_index
 from config import STANDARD_HEADERS, FULL_HEADERS, SCHEDULE_SHEET_NAME
@@ -219,6 +221,45 @@ class TestExcelWriter(unittest.TestCase):
         self.assertTrue(mock_ws.cell.called)
         # mock_ws.cell.return_value 是同一个 MagicMock，write_preserved_row 会对它赋值 fill
         self.assertEqual(mock_ws.cell.return_value.fill, orange_fill)
+
+    def test_write_preserved_row_keeps_fill_after_real_workbook_roundtrip(self):
+        """真实 workbook round-trip 后仍应保留颜色"""
+        from openpyxl import Workbook, load_workbook
+        from openpyxl.styles import PatternFill
+
+        with TemporaryDirectory() as tmpdir:
+            workbook_path = Path(tmpdir) / "roundtrip.xlsx"
+
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "客户A"
+            for col_idx, header in enumerate(FULL_HEADERS, 1):
+                ws.cell(row=1, column=col_idx).value = header
+
+            row_data = ["2026/4/20", "客户A", "ORD001", "COIL001"] + [""] * 19 + ["2026/4/15"]
+            fill = PatternFill(start_color="ABCDEF", end_color="ABCDEF", fill_type="solid")
+            for col_idx, value in enumerate(row_data, 1):
+                cell = ws.cell(row=2, column=col_idx)
+                cell.value = value
+                cell.fill = fill
+            wb.save(workbook_path)
+
+            wb = load_workbook(workbook_path)
+            reader = ExcelReader(wb)
+            rows, _ = reader.read_customer_data(wb["客户A"], "客户A")
+
+            del wb["客户A"]
+            writer = ExcelWriter(wb)
+            new_ws = writer.create_customer_sheet("客户A")
+            writer.write_preserved_row(new_ws, 2, rows[0].to_dict())
+            wb.save(workbook_path)
+
+            saved_wb = load_workbook(workbook_path)
+            saved_ws = saved_wb["客户A"]
+            self.assertEqual(saved_ws.cell(row=2, column=1).fill.fill_type, "solid")
+            self.assertEqual(saved_ws.cell(row=2, column=1).fill.fgColor.rgb, "00ABCDEF")
+            self.assertEqual(saved_ws.cell(row=2, column=len(FULL_HEADERS)).fill.fill_type, "solid")
+            self.assertEqual(saved_ws.cell(row=2, column=len(FULL_HEADERS)).fill.fgColor.rgb, "00ABCDEF")
 
     def test_write_updated_row(self):
         """测试写入更新行（橙色）"""

@@ -4,6 +4,7 @@ Excel 读写处理模块
 """
 
 from collections import defaultdict
+from copy import copy
 from typing import Dict, List, Tuple, Optional, Any, Set
 
 from openpyxl import load_workbook
@@ -17,6 +18,16 @@ from config import (
 )
 from models import CoilRecord, ScheduleRecord, YehuiRecord
 from utils import format_date, get_field_by_name
+
+
+def clone_fill(fill: Any) -> Any:
+    """复制 openpyxl 填充样式，避免 StyleProxy 无法直接复用"""
+    if not fill:
+        return None
+    try:
+        return copy(fill)
+    except Exception:
+        return None
 
 
 def resolve_col_index(header_map: Dict[str, int], target_name: str, variants: List[str], default: int = 0) -> int:
@@ -194,7 +205,7 @@ class ExcelReader:
             warehouse = ws.cell(row=row_idx, column=col_warehouse).value
             transfer = ws.cell(row=row_idx, column=col_transfer).value
             entry = ws.cell(row=row_idx, column=col_entry).value
-            fill = ws.cell(row=row_idx, column=4).fill
+            fill = clone_fill(ws.cell(row=row_idx, column=4).fill)
             modify_date = ws.cell(row=row_idx, column=FULL_COL_COUNT).value
 
             record = CoilRecord(
@@ -205,7 +216,7 @@ class ExcelReader:
                 entry_date=entry,
                 customer=sheet_name,
                 row_data=row_data,
-                fill=fill if fill else None,
+                fill=fill,
                 row_idx=row_idx,
                 modify_date=modify_date,
             )
@@ -249,7 +260,7 @@ class ExcelWriter:
             cell.border = THIN_BORDER
             if fill and hasattr(fill, "fgColor") and fill.fgColor:
                 try:
-                    cell.fill = fill
+                    cell.fill = clone_fill(fill)
                 except Exception:
                     pass
 
@@ -261,7 +272,7 @@ class ExcelWriter:
             mod_cell.border = THIN_BORDER
             if fill and hasattr(fill, "fgColor") and fill.fgColor:
                 try:
-                    mod_cell.fill = fill
+                    mod_cell.fill = clone_fill(fill)
                 except Exception:
                     pass
 
