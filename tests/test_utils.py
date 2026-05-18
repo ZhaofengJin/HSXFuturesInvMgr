@@ -6,7 +6,7 @@ TDD: 先写测试，后实现
 import unittest
 from datetime import datetime
 
-from utils import format_date, get_field_by_name, safe_sheet_name, find_base_dir
+from utils import format_date, get_field_by_name, safe_sheet_name, find_base_dir, is_temp_or_backup_file
 from config import STANDARD_HEADERS, FULL_HEADERS
 
 
@@ -133,6 +133,22 @@ class TestFindBaseDir(unittest.TestCase):
             os.makedirs(temp_dir)
             found = find_base_dir(tmpdir, "期货")
             self.assertIsNone(found)
+
+
+class TestIsTempOrBackupFile(unittest.TestCase):
+    """测试临时/备份文件识别"""
+
+    def test_excel_temp_file(self):
+        self.assertTrue(is_temp_or_backup_file("/tmp/~$期货库存明细.xlsx"))
+
+    def test_backup_keyword_file(self):
+        self.assertTrue(is_temp_or_backup_file("/tmp/期货库存明细_备份.xlsx"))
+
+    def test_bak_extension_file(self):
+        self.assertTrue(is_temp_or_backup_file("/tmp/inventory.bak"))
+
+    def test_normal_file(self):
+        self.assertFalse(is_temp_or_backup_file("/tmp/期货库存明细.xlsx"))
 
 
 class TestConfigConstants(unittest.TestCase):
