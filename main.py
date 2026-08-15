@@ -7,7 +7,7 @@
 2. 合同日期为第一列
 3. 日期格式: YYYY/M/D
 4. 相同订单号的钢卷放在一起，不同订单号之间空一行
-5. 已存在的钢卷：核对仓别，如有变动更新仓别和移拨日期（橙色）
+5. 已存在的钢卷：核对订单号、仓别及全部共有属性，如有变动更新（转单 → 紫色；其他属性 → 橙色）
 6. 直接更新到 results 文件夹中的原始期货库存明细.xlsx
 7. 以期货排程订单为基准：检查每个订单在烨辉表中对应的钢卷
 8. 只增加不删减：原文件已有的钢卷即使烨辉表不存在也保留
@@ -143,9 +143,11 @@ def main(base_dir=None):
     print()
     print("Step 3: Reading Yehui inventory data (by field name)...")
     yehui_ws = yehui_wb[yehui_wb.sheetnames[0]]
-    yehui_records, yehui_coil_info = reader.read_yehui_data(yehui_ws)
+    yehui_records, yehui_coil_info, duplicate_coils = reader.read_yehui_data(yehui_ws)
     print(f"  Loaded {len(yehui_records)} records from Yehui inventory")
     print(f"  Loaded {len(yehui_coil_info)} coil warehouse info")
+    if duplicate_coils:
+        print(f"  Warning: {len(duplicate_coils)} duplicate coils found in Yehui (last row wins): {duplicate_coils[:5]}")
 
     # ---------- 7. 读取原文件客户数据 ----------
     print()
@@ -174,10 +176,16 @@ def main(base_dir=None):
     preserved, updated, _ = processor.compare_data(original_all_rows, yehui_coil_info, schedule_data)
     original_coil_set = processor.build_coil_set(original_all_rows)
     new_coils = processor.find_new_coils(schedule_data, yehui_records, original_coil_set)
+    transferred = [u for u in updated if u.get("change_type") == "transferred"]
+    attribute_updated = [u for u in updated if u.get("change_type") != "transferred"]
 
     print(f"  Preserved rows:                 {len(preserved)}")
-    print(f"  Updated coils (warehouse diff): {len(updated)}")
-    print(f"  New coils from schedule+Yehui:  {len(new_coils)}")
+    print(f"  Transferred coils (order diff): {len(transferred)}  -> purple")
+    print(f"  Updated coils (attribute diff): {len(attribute_updated)}  -> orange")
+    print(f"  New coils from schedule+Yehui:  {len(new_coils)}  -> yellow")
+
+    # 按客户分组（dry-run 与写入都依赖）
+    customer_groups = processor.group_by_customer(preserved, updated, new_coils, schedule_data)
 
     # ---------- 9. 重建客户 Sheet ----------
     print()
@@ -188,8 +196,6 @@ def main(base_dir=None):
     for sheet_name in sheets_to_remove:
         del futures_wb[sheet_name]
 
-    # 按客户分组
-    customer_groups = processor.group_by_customer(preserved, updated, new_coils, schedule_data)
     modification_date = format_date(datetime.now())
 
     for customer_name, items in customer_groups.items():
@@ -208,8 +214,10 @@ def main(base_dir=None):
 
             if item_type == "preserved":
                 writer.write_preserved_row(ws, current_row, item_data.to_dict())
-            elif item_type == "updated":
-                writer.write_updated_row(ws, current_row, item_data, modification_date)
+            elif item_type in ("updated", "transferred"):
+                order_no_for_schedule = item_data.get("order_no", "")
+                schedule_info = schedule_data.get(order_no_for_schedule, ScheduleRecord(order_no="", customer="")).to_dict()
+                writer.write_updated_row(ws, current_row, item_data, schedule_info, modification_date)
             elif item_type == "new":
                 coil_no = item_data["coil_no"]
                 order_no_new = item_data["order_no"]
@@ -228,7 +236,7 @@ def main(base_dir=None):
 
     schedule_ws = futures_wb[SCHEDULE_SHEET_NAME]
     order_has_yehui = processor.build_order_has_yehui(yehui_records)
-    order_in_customer_sheet = processor.build_order_in_customer_sheet(original_all_rows)
+    order_in_customer_sheet = processor.build_order_set_from_groups(customer_groups)
 
     matched_count, unmatched_count = writer.update_schedule_colors(
         schedule_ws, order_has_yehui, order_in_customer_sheet
@@ -252,12 +260,13 @@ def main(base_dir=None):
     print()
     print("Summary:")
     print(f"  - Preserved rows (no change):          {len(preserved)}")
-    print(f"  - Updated coils  (warehouse changed):  {len(updated)}  -> orange")
+    print(f"  - Transferred coils (order changed):   {len(transferred)}  -> purple")
+    print(f"  - Updated coils  (attribute changed):  {len(attribute_updated)}  -> orange")
     print(f"  - New coils      (schedule+Yehui):     {len(new_coils)}  -> yellow")
     print(f"  - Schedule matched:                   {matched_count}  -> green")
     print(f"  - Schedule unmatched:                  {unmatched_count}  -> red")
     print()
-    print("Logic: schedule orders -> Yehui coil lookup (by field name) -> coil_no dedup -> append only")
+    print("Logic: schedule orders -> Yehui coil lookup (by field name) -> full attribute sync -> append only")
     print("Processing complete!")
 
     return 0

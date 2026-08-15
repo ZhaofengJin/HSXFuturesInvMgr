@@ -96,7 +96,7 @@ class TestExcelReader(unittest.TestCase):
         self.assertIn("COIL001", coils["ORD001"])
 
     def test_read_yehui_data(self):
-        """测试读取烨辉库存数据"""
+        """测试读取烨辉库存数据（含 order_no、data 及冲突列表）"""
         yehui_ws = MagicMock()
         yehui_ws.max_column = 3
         yehui_ws.max_row = 3
@@ -114,11 +114,39 @@ class TestExcelReader(unittest.TestCase):
         yehui_ws.cell = yehui_cell
 
         reader = ExcelReader(self.mock_wb)
-        records, coil_info = reader.read_yehui_data(yehui_ws)
+        records, coil_info, duplicate_coils = reader.read_yehui_data(yehui_ws)
 
         self.assertEqual(len(records), 2)
         self.assertEqual(coil_info["COIL001"]["warehouse"], "W1")
+        self.assertEqual(coil_info["COIL001"]["order_no"], "ORD001")
+        self.assertIn("data", coil_info["COIL001"])
         self.assertEqual(coil_info["COIL002"]["warehouse"], "W2")
+        self.assertEqual(duplicate_coils, [])
+
+    def test_read_yehui_data_duplicate_coils(self):
+        """同一钢卷出现多次时记录冲突并按后行覆盖"""
+        yehui_ws = MagicMock()
+        yehui_ws.max_column = 3
+        yehui_ws.max_row = 3
+
+        def yehui_cell(row, column):
+            m = MagicMock()
+            values = {
+                (1, 1): "訂單編號", (1, 2): "鋼捲編號", (1, 3): "倉別",
+                (2, 1): "ORD001", (2, 2): "COIL001", (2, 3): "W1",
+                (3, 1): "ORD002", (3, 2): "COIL001", (3, 3): "W2",
+            }
+            m.value = values.get((row, column))
+            return m
+
+        yehui_ws.cell = yehui_cell
+
+        reader = ExcelReader(self.mock_wb)
+        records, coil_info, duplicate_coils = reader.read_yehui_data(yehui_ws)
+
+        self.assertEqual(duplicate_coils, ["COIL001"])
+        self.assertEqual(coil_info["COIL001"]["order_no"], "ORD002")
+        self.assertEqual(coil_info["COIL001"]["warehouse"], "W2")
 
     def test_read_customer_data(self):
         """测试读取客户 Sheet 数据（包含修改日期列）"""
@@ -262,20 +290,42 @@ class TestExcelWriter(unittest.TestCase):
             self.assertEqual(saved_ws.cell(row=2, column=len(FULL_HEADERS)).fill.fgColor.rgb, "00ABCDEF")
 
     def test_write_updated_row(self):
-        """测试写入更新行（橙色）"""
+        """测试写入属性更新行（橙色）"""
         mock_ws = MagicMock()
         writer = ExcelWriter(self.mock_wb)
 
         update_info = {
             "row_data": ["2026/4/20", "无锡晟明", "ORD001", "COIL001"] + [""] * 19,
-            "new_warehouse": "W2",
-            "new_transfer_date": "2026/4/21",
-            "new_entry_date": "2026/4/22",
+            "change_type": "updated",
+            "coil_no": "COIL001",
+            "order_no": "ORD001",
+            "yehui_data": {"倉別": "W2", "移撥日期": "2026/4/21", "入庫日期": "2026/4/22"},
         }
-        writer.write_updated_row(mock_ws, 2, update_info, "2026/5/10")
+        schedule_info = {"date": "2026/4/20", "customer": "无锡晟明"}
+        writer.write_updated_row(mock_ws, 2, update_info, schedule_info, "2026/5/10")
 
         # 验证单元格被调用
         self.assertTrue(mock_ws.cell.called)
+
+    def test_write_transferred_row(self):
+        """测试写入转单行（紫色），且使用排程中的新订单/新客户"""
+        mock_ws = MagicMock()
+        writer = ExcelWriter(self.mock_wb)
+
+        update_info = {
+            "row_data": ["2026/4/20", "无锡晟明", "ORD001", "COIL001"] + [""] * 19,
+            "change_type": "transferred",
+            "coil_no": "COIL001",
+            "order_no": "ORD002",
+            "new_order_no": "ORD002",
+            "old_order_no": "ORD001",
+            "yehui_data": {"倉別": "W1", "移撥日期": "2026/4/21", "入庫日期": "2026/4/22", "鍍層代號": "AZ150"},
+        }
+        schedule_info = {"date": "2026/5/1", "customer": "上海客户（转单）"}
+        writer.write_updated_row(mock_ws, 2, update_info, schedule_info, "2026/5/10")
+
+        self.assertTrue(mock_ws.cell.called)
+        # 无法直接验证 fill，因为 mock cell 返回同一个对象，但调用不报错即可
 
     def test_write_new_row(self):
         """测试写入新增行（黄色）"""

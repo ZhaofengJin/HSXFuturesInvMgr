@@ -13,7 +13,7 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from config import (
     STANDARD_HEADERS, FULL_HEADERS, STANDARD_COL_COUNT, FULL_COL_COUNT,
     HEADER_FILL, HEADER_FONT, THIN_BORDER,
-    UPDATED_FILL, NEW_FILL, GREEN_FILL, RED_FILL, NO_FILL,
+    UPDATED_FILL, TRANSFERRED_FILL, NEW_FILL, GREEN_FILL, RED_FILL, NO_FILL,
     SCHEDULE_SHEET_NAME, SKIP_SHEET_NAMES, KEY_COLUMNS, SCHEDULE_DEFAULT_COLS,
 )
 from models import CoilRecord, ScheduleRecord, YehuiRecord
@@ -118,11 +118,11 @@ class ExcelReader:
 
         return schedule_data, schedule_coils
 
-    def read_yehui_data(self, worksheet) -> Tuple[Dict[str, YehuiRecord], Dict[str, Dict[str, Any]]]:
+    def read_yehui_data(self, worksheet) -> Tuple[Dict[str, YehuiRecord], Dict[str, Dict[str, Any]], List[str]]:
         """
         读取烨辉库存表数据
         Returns:
-            (key -> YehuiRecord, coil_no -> {warehouse, transfer_date, entry_date})
+            (key -> YehuiRecord, coil_no -> {order_no, warehouse, transfer_date, entry_date, data}, duplicate_coils)
         """
         ws = worksheet
 
@@ -135,6 +135,7 @@ class ExcelReader:
 
         records: Dict[str, YehuiRecord] = {}
         coil_info: Dict[str, Dict[str, Any]] = {}
+        duplicate_coils: List[str] = []
 
         for row_idx in range(2, ws.max_row + 1):
             row_data = {}
@@ -157,16 +158,22 @@ class ExcelReader:
                     data=row_data,
                 )
 
+                if coil_no_str in coil_info:
+                    # 同一钢卷出现多次（不同订单），记录冲突，按后行覆盖
+                    duplicate_coils.append(coil_no_str)
+
                 warehouse = get_field_by_name(row_data, "倉別")
                 transfer_date = get_field_by_name(row_data, "移撥日期")
                 entry_date = get_field_by_name(row_data, "入庫日期")
                 coil_info[coil_no_str] = {
+                    "order_no": order_no_str,
                     "warehouse": str(warehouse).strip() if warehouse else "",
                     "transfer_date": transfer_date,
                     "entry_date": entry_date,
+                    "data": row_data,
                 }
 
-        return records, coil_info
+        return records, coil_info, duplicate_coils
 
     def read_customer_data(self, worksheet, sheet_name: str) -> Tuple[List[CoilRecord], List[CoilRecord]]:
         """
@@ -276,34 +283,51 @@ class ExcelWriter:
                 except Exception:
                     pass
 
-    def write_updated_row(self, ws, row_idx: int, update_info: Dict[str, Any], modification_date: str):
-        """写入更新行（橙色 - 仓别变动）"""
+    def write_updated_row(self, ws, row_idx: int, update_info: Dict[str, Any],
+                          schedule_info: Dict[str, Any], modification_date: str):
+        """
+        写入更新行（橙色 - 属性更新 / 紫色 - 转单）
+        按烨辉数据同步所有共同字段；烨辉为空时保留原值。
+        """
         row_data = update_info.get("row_data", [])
+        yehui_data = update_info.get("yehui_data", {})
+        change_type = update_info.get("change_type", "updated")
+        fill = TRANSFERRED_FILL if change_type == "transferred" else UPDATED_FILL
 
         for col_idx, header in enumerate(STANDARD_HEADERS, 1):
             cell = ws.cell(row=row_idx, column=col_idx)
 
-            if header == "倉別":
-                cell.value = update_info.get("new_warehouse", "")
-            elif header == "移撥日期":
-                new_transfer = update_info.get("new_transfer_date")
-                cell.value = format_date(new_transfer) if new_transfer else ""
-            elif header == "入庫日期":
-                new_entry = update_info.get("new_entry_date")
-                cell.value = format_date(new_entry) if new_entry else ""
-            elif col_idx <= STANDARD_COL_COUNT and col_idx - 1 < len(row_data):
-                cell.value = row_data[col_idx - 1]
+            if header == "訂單編號":
+                cell.value = update_info.get("order_no", "")
+            elif header == "鋼捲編號":
+                cell.value = update_info.get("coil_no", "")
+            elif header == "合同日期":
+                cell.value = format_date(schedule_info.get("date")) if schedule_info.get("date") else (
+                    row_data[0] if len(row_data) > 0 else ""
+                )
+            elif header == "客户名称":
+                cell.value = schedule_info.get("customer", "") or (
+                    row_data[1] if len(row_data) > 1 else ""
+                )
             else:
-                cell.value = ""
+                new_val = get_field_by_name(yehui_data, header)
+                if new_val is None or (isinstance(new_val, str) and new_val.strip() == ""):
+                    # 烨辉为空 → 保留原值
+                    old_val = row_data[col_idx - 1] if col_idx - 1 < len(row_data) else None
+                    cell.value = old_val
+                elif header in {"移撥日期", "入庫日期"}:
+                    cell.value = format_date(new_val)
+                else:
+                    cell.value = new_val
 
             cell.border = THIN_BORDER
-            cell.fill = UPDATED_FILL
+            cell.fill = fill
 
         # 修改日期列
         mod_cell = ws.cell(row=row_idx, column=FULL_COL_COUNT)
         mod_cell.value = modification_date
         mod_cell.border = THIN_BORDER
-        mod_cell.fill = UPDATED_FILL
+        mod_cell.fill = fill
 
     def write_new_row(self, ws, row_idx: int, new_info: Dict[str, Any],
                       schedule_info: Dict[str, Any], coil_info: Dict[str, Any],

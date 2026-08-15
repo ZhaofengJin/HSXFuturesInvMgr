@@ -18,29 +18,25 @@ class TestInventoryProcessor(unittest.TestCase):
 
     # ---------- 比对逻辑测试 ----------
 
-    def test_warehouse_changed_marked_updated(self):
-        """原文件有，烨辉有，仓别变 → updated"""
-        original = [
-            CoilRecord(order_no="ORD001", coil_no="COIL001", warehouse="W1", customer="无锡晟明"),
-        ]
-        yehui_info = {
-            "COIL001": {"warehouse": "W2", "transfer_date": "2026/4/21", "entry_date": "2026/4/22"},
-        }
-
-        preserved, updated, new = self.processor.compare_data(original, yehui_info, {})
-
-        self.assertEqual(len(preserved), 0)
-        self.assertEqual(len(updated), 1)
-        self.assertEqual(len(new), 0)
-        self.assertEqual(updated[0]["new_warehouse"], "W2")
-
     def test_warehouse_same_marked_preserved(self):
-        """原文件有，烨辉有，仓别同 → preserved"""
+        """原文件有，烨辉有，仓别同且其他属性同 → preserved"""
+        row_data = [""] * 24
+        row_data[2] = "ORD001"
+        row_data[3] = "COIL001"
+        row_data[11] = "W1"
+        row_data[12] = "2026/4/20"
+        row_data[13] = "2026/4/21"
         original = [
-            CoilRecord(order_no="ORD001", coil_no="COIL001", warehouse="W1", customer="无锡晟明"),
+            CoilRecord(order_no="ORD001", coil_no="COIL001", warehouse="W1", customer="无锡晟明", row_data=row_data),
         ]
         yehui_info = {
-            "COIL001": {"warehouse": "W1", "transfer_date": "2026/4/20", "entry_date": "2026/4/21"},
+            "COIL001": {
+                "order_no": "ORD001",
+                "warehouse": "W1",
+                "transfer_date": "2026/4/20",
+                "entry_date": "2026/4/21",
+                "data": {"訂單編號": "ORD001", "倉別": "W1", "移撥日期": "2026/4/20", "入庫日期": "2026/4/21"},
+            },
         }
 
         preserved, updated, new = self.processor.compare_data(original, yehui_info, {})
@@ -48,6 +44,35 @@ class TestInventoryProcessor(unittest.TestCase):
         self.assertEqual(len(preserved), 1)
         self.assertEqual(len(updated), 0)
         self.assertEqual(len(new), 0)
+
+    def test_warehouse_changed_marked_updated(self):
+        """原文件有，烨辉有，仓别变 → updated"""
+        row_data = [""] * 24
+        row_data[2] = "ORD001"
+        row_data[3] = "COIL001"
+        row_data[11] = "W1"
+        row_data[12] = "2026/4/20"
+        row_data[13] = "2026/4/21"
+        original = [
+            CoilRecord(order_no="ORD001", coil_no="COIL001", warehouse="W1", customer="无锡晟明", row_data=row_data),
+        ]
+        yehui_info = {
+            "COIL001": {
+                "order_no": "ORD001",
+                "warehouse": "W2",
+                "transfer_date": "2026/4/20",
+                "entry_date": "2026/4/21",
+                "data": {"訂單編號": "ORD001", "倉別": "W2", "移撥日期": "2026/4/20", "入庫日期": "2026/4/21"},
+            },
+        }
+
+        preserved, updated, new = self.processor.compare_data(original, yehui_info, {})
+
+        self.assertEqual(len(preserved), 0)
+        self.assertEqual(len(updated), 1)
+        self.assertEqual(len(new), 0)
+        self.assertEqual(updated[0]["change_type"], "updated")
+        self.assertEqual(updated[0]["yehui_data"].get("倉別"), "W2")
 
     def test_not_in_yehui_preserved(self):
         """原文件有，烨辉无 → preserved（只增加不删减）"""
@@ -64,23 +89,32 @@ class TestInventoryProcessor(unittest.TestCase):
 
     def test_new_coil_from_schedule_and_yehui(self):
         """原文件无，期货排程有，烨辉有 → new"""
+        row_data = [""] * 24
+        row_data[2] = "ORD001"
+        row_data[3] = "COIL001"
+        row_data[11] = "W1"
         original = [
-            CoilRecord(order_no="ORD001", coil_no="COIL001", warehouse="W1", customer="无锡晟明"),
+            CoilRecord(order_no="ORD001", coil_no="COIL001", warehouse="W1", customer="无锡晟明", row_data=row_data),
         ]
         yehui_data = {
+            "ORD001_COIL001": YehuiRecord(
+                order_no="ORD001", coil_no="COIL001",
+                data={"訂單編號": "ORD001", "倉別": "W1", "移撥日期": "2026/4/20", "入庫日期": "2026/4/21"},
+            ),
             "ORD001_COIL002": YehuiRecord(
                 order_no="ORD001", coil_no="COIL002",
-                data={"倉別": "W3", "移撥日期": "2026/4/25"},
+                data={"訂單編號": "ORD001", "倉別": "W3", "移撥日期": "2026/4/25"},
             ),
         }
         yehui_info = {
-            "COIL002": {"warehouse": "W3", "transfer_date": "2026/4/25", "entry_date": "2026/4/26"},
+            "COIL001": {"order_no": "ORD001", "warehouse": "W1", "data": {"訂單編號": "ORD001", "倉別": "W1"}},
+            "COIL002": {"order_no": "ORD001", "warehouse": "W3", "data": {"訂單編號": "ORD001", "倉別": "W3"}},
         }
         schedule_data = {
             "ORD001": ScheduleRecord(order_no="ORD001", customer="无锡晟明", date="2026/4/20"),
         }
 
-        preserved, updated, new = self.processor.compare_data(original, yehui_info, {})
+        preserved, updated, new = self.processor.compare_data(original, yehui_info, schedule_data)
         new_coils = self.processor.find_new_coils(schedule_data, yehui_data, {"COIL001"})
 
         self.assertEqual(len(preserved), 1)
@@ -239,14 +273,119 @@ class TestInventoryProcessor(unittest.TestCase):
         result = self.processor.build_order_has_yehui(yehui_data)
         self.assertEqual(result, {"ORD001", "ORD002"})
 
-    def test_build_order_in_customer_sheet(self):
-        """测试构建订单-客户Sheet映射"""
-        rows = [
-            CoilRecord(order_no="ORD001", coil_no="COIL001"),
-            CoilRecord(order_no="ORD002", coil_no="COIL002"),
+    # ---------- 转单逻辑测试 ----------
+
+    def test_order_changed_marked_transferred(self):
+        """原文件有，烨辉有，订单号变化 → transferred（紫色）"""
+        original = [
+            CoilRecord(order_no="ORD001", coil_no="COIL001", warehouse="W1", customer="无锡晟明"),
         ]
-        result = self.processor.build_order_in_customer_sheet(rows)
-        self.assertEqual(result, {"ORD001", "ORD002"})
+        yehui_info = {
+            "COIL001": {
+                "order_no": "ORD002",
+                "warehouse": "W1",
+                "transfer_date": "2026/4/20",
+                "entry_date": "2026/4/21",
+                "data": {"訂單編號": "ORD002", "倉別": "W1", "移撥日期": "2026/4/20", "入庫日期": "2026/4/21"},
+            },
+        }
+        schedule_data = {
+            "ORD002": ScheduleRecord(order_no="ORD002", customer="上海客户", date="2026/4/20"),
+        }
+
+        preserved, updated, new = self.processor.compare_data(original, yehui_info, schedule_data)
+
+        self.assertEqual(len(preserved), 0)
+        self.assertEqual(len(updated), 1)
+        self.assertEqual(len(new), 0)
+        self.assertEqual(updated[0]["change_type"], "transferred")
+        self.assertEqual(updated[0]["order_no"], "ORD002")
+        self.assertEqual(updated[0]["new_order_no"], "ORD002")
+        self.assertEqual(updated[0]["old_order_no"], "ORD001")
+
+    def test_transferred_takes_priority_over_attribute_change(self):
+        """转单+属性变更同时发生时，优先级为 transferred"""
+        original = [
+            CoilRecord(order_no="ORD001", coil_no="COIL001", warehouse="W1", customer="无锡晟明"),
+        ]
+        yehui_info = {
+            "COIL001": {
+                "order_no": "ORD002",
+                "warehouse": "W2",
+                "transfer_date": "2026/4/20",
+                "entry_date": "2026/4/21",
+                "data": {"訂單編號": "ORD002", "倉別": "W2", "移撥日期": "2026/4/20", "入庫日期": "2026/4/21"},
+            },
+        }
+
+        preserved, updated, new = self.processor.compare_data(original, yehui_info, {})
+
+        self.assertEqual(len(updated), 1)
+        self.assertEqual(updated[0]["change_type"], "transferred")
+
+    def test_date_normalization_avoids_false_positive(self):
+        """日期格式不同但实质相同 → preserved"""
+        from datetime import datetime
+        row_data = [""] * 24
+        row_data[2] = "ORD001"
+        row_data[3] = "COIL001"
+        row_data[11] = "W1"
+        row_data[13] = "2026/8/3"
+        original = [
+            CoilRecord(order_no="ORD001", coil_no="COIL001", warehouse="W1", customer="无锡晟明", row_data=row_data),
+        ]
+        yehui_info = {
+            "COIL001": {
+                "order_no": "ORD001",
+                "warehouse": "W1",
+                "transfer_date": None,
+                "entry_date": datetime(2026, 8, 3),
+                "data": {"訂單編號": "ORD001", "倉別": "W1", "移撥日期": None, "入庫日期": datetime(2026, 8, 3)},
+            },
+        }
+
+        preserved, updated, new = self.processor.compare_data(original, yehui_info, {})
+
+        self.assertEqual(len(preserved), 1)
+        self.assertEqual(len(updated), 0)
+
+    def test_group_by_customer_transferred_uses_new_customer(self):
+        """转单行按新订单号从排程取客户归属"""
+        preserved = [
+            CoilRecord(order_no="ORD001", coil_no="COIL001", warehouse="W1", customer="无锡晟明"),
+        ]
+        updated = [
+            {
+                "order_no": "ORD002",
+                "coil_no": "COIL001",
+                "customer": "无锡晟明",
+                "change_type": "transferred",
+                "new_order_no": "ORD002",
+                "old_order_no": "ORD001",
+            },
+        ]
+        schedule_data = {
+            "ORD002": ScheduleRecord(order_no="ORD002", customer="上海客户（转单）"),
+        }
+
+        groups = self.processor.group_by_customer(preserved, updated, [], schedule_data)
+
+        self.assertIn("上海客户（转单）", groups)
+        self.assertEqual(len(groups["上海客户（转单）"]), 1)
+        self.assertEqual(groups["上海客户（转单）"][0][0], "transferred")
+        # 保留行仍留在原客户 sheet
+        self.assertIn("无锡晟明", groups)
+        self.assertEqual(len(groups["无锡晟明"]), 1)
+        self.assertEqual(groups["无锡晟明"][0][0], "preserved")
+
+    def test_build_order_set_from_groups(self):
+        """从最终分组中构建订单号集合"""
+        groups = {
+            "无锡晟明": [("preserved", CoilRecord(order_no="ORD001", coil_no="COIL001")),
+                        ("updated", {"order_no": "ORD002", "coil_no": "COIL002"})],
+        }
+        orders = self.processor.build_order_set_from_groups(groups)
+        self.assertEqual(orders, {"ORD001", "ORD002"})
 
 
 if __name__ == "__main__":

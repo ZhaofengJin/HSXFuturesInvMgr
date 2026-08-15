@@ -43,7 +43,8 @@ THIN_BORDER = Border(
 )
 
 # 行状态颜色
-UPDATED_FILL = PatternFill(start_color="FFA500", end_color="FFA500", fill_type="solid")  # 橙色 - 仓别更新
+UPDATED_FILL = PatternFill(start_color="FFA500", end_color="FFA500", fill_type="solid")  # 橙色 - 属性更新
+TRANSFERRED_FILL = PatternFill(start_color="800080", end_color="800080", fill_type="solid")  # 紫色 - 转单（订单编号变更）
 NEW_FILL = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")      # 黄色 - 新增
 GREEN_FILL = PatternFill(start_color="00FF00", end_color="00FF00", fill_type="solid")    # 绿色 - 已匹配
 RED_FILL = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")      # 红色 - 未匹配

@@ -222,8 +222,10 @@ def main(argv=None):
     log(f"Read {len(schedule_data)} orders from futures schedule", json_mode, verbose)
 
     yehui_ws = yehui_wb[yehui_wb.sheetnames[0]]
-    yehui_records, yehui_coil_info = reader.read_yehui_data(yehui_ws)
+    yehui_records, yehui_coil_info, duplicate_coils = reader.read_yehui_data(yehui_ws)
     log(f"Loaded {len(yehui_records)} records from Yehui inventory", json_mode, verbose)
+    if duplicate_coils:
+        log(f"Warning: duplicate coils in Yehui (last row wins): {duplicate_coils[:5]}", json_mode, verbose)
 
     original_all_rows = []
     for sheet_name in futures_wb.sheetnames:
@@ -240,10 +242,16 @@ def main(argv=None):
     preserved, updated, _ = processor.compare_data(original_all_rows, yehui_coil_info, schedule_data)
     original_coil_set = processor.build_coil_set(original_all_rows)
     new_coils = processor.find_new_coils(schedule_data, yehui_records, original_coil_set)
+    transferred = [u for u in updated if u.get("change_type") == "transferred"]
+    attribute_updated = [u for u in updated if u.get("change_type") != "transferred"]
 
     log(f"Preserved rows:                 {len(preserved)}", json_mode, verbose)
-    log(f"Updated coils (warehouse diff): {len(updated)}", json_mode, verbose)
-    log(f"New coils from schedule+Yehui:  {len(new_coils)}", json_mode, verbose)
+    log(f"Transferred coils (order diff): {len(transferred)}  -> purple", json_mode, verbose)
+    log(f"Updated coils (attribute diff): {len(attribute_updated)}  -> orange", json_mode, verbose)
+    log(f"New coils from schedule+Yehui:  {len(new_coils)}  -> yellow", json_mode, verbose)
+
+    # 按客户分组（dry-run 与写入都依赖）
+    customer_groups = processor.group_by_customer(preserved, updated, new_coils, schedule_data)
 
     # ---------- 7. 重建 Sheet ----------
     if not dry_run:
@@ -255,7 +263,6 @@ def main(argv=None):
         from utils import format_date, safe_sheet_name
         from datetime import datetime
 
-        customer_groups = processor.group_by_customer(preserved, updated, new_coils, schedule_data)
         modification_date = format_date(datetime.now())
 
         for customer_name, items in customer_groups.items():
@@ -271,16 +278,18 @@ def main(argv=None):
                 if prev_order_no is not None and prev_order_no != order_no:
                     current_row += 1
 
-                if item_type == "preserved":
-                    writer.write_preserved_row(ws, current_row, item_data.to_dict())
-                elif item_type == "updated":
-                    writer.write_updated_row(ws, current_row, item_data, modification_date)
-                elif item_type == "new":
-                    coil_no = item_data["coil_no"]
-                    order_no_new = item_data["order_no"]
-                    schedule_info = schedule_data.get(order_no_new, ScheduleRecord(order_no="", customer=""))
-                    coil_info = yehui_coil_info.get(coil_no, {})
-                    writer.write_new_row(ws, current_row, item_data, schedule_info.to_dict(), coil_info, modification_date)
+            if item_type == "preserved":
+                writer.write_preserved_row(ws, current_row, item_data.to_dict())
+            elif item_type in ("updated", "transferred"):
+                order_no_for_schedule = item_data.get("order_no", "")
+                schedule_info = schedule_data.get(order_no_for_schedule, ScheduleRecord(order_no="", customer="")).to_dict()
+                writer.write_updated_row(ws, current_row, item_data, schedule_info, modification_date)
+            elif item_type == "new":
+                coil_no = item_data["coil_no"]
+                order_no_new = item_data["order_no"]
+                schedule_info = schedule_data.get(order_no_new, ScheduleRecord(order_no="", customer=""))
+                coil_info = yehui_coil_info.get(coil_no, {})
+                writer.write_new_row(ws, current_row, item_data, schedule_info.to_dict(), coil_info, modification_date)
 
                 current_row += 1
                 prev_order_no = order_no
@@ -290,7 +299,7 @@ def main(argv=None):
         # 更新期货排程颜色
         schedule_ws = futures_wb[SCHEDULE_SHEET_NAME]
         order_has_yehui = processor.build_order_has_yehui(yehui_records)
-        order_in_customer_sheet = processor.build_order_in_customer_sheet(original_all_rows)
+        order_in_customer_sheet = processor.build_order_set_from_groups(customer_groups)
         matched_count, unmatched_count = writer.update_schedule_colors(
             schedule_ws, order_has_yehui, order_in_customer_sheet
         )
@@ -305,7 +314,7 @@ def main(argv=None):
     else:
         # dry-run: 只计算颜色统计，不实际写入
         order_has_yehui = processor.build_order_has_yehui(yehui_records)
-        order_in_customer_sheet = processor.build_order_in_customer_sheet(original_all_rows)
+        order_in_customer_sheet = processor.build_order_set_from_groups(customer_groups)
         matched_count = len(order_has_yehui | order_in_customer_sheet)
         unmatched_count = len(set(schedule_data.keys()) - order_has_yehui - order_in_customer_sheet)
         log("[DRY-RUN] Sheets not saved", json_mode, verbose)
@@ -313,7 +322,8 @@ def main(argv=None):
     # ---------- 8. 输出结果 ----------
     summary = {
         "preserved": len(preserved),
-        "updated": len(updated),
+        "transferred": len(transferred),
+        "updated": len(attribute_updated),
         "new": len(new_coils),
         "matched": matched_count,
         "unmatched": unmatched_count,
@@ -334,7 +344,8 @@ def main(argv=None):
         log("", json_mode, verbose)
         log("Summary:", json_mode, verbose)
         log(f"  - Preserved rows (no change):          {len(preserved)}", json_mode, verbose)
-        log(f"  - Updated coils  (warehouse changed):  {len(updated)}  -> orange", json_mode, verbose)
+        log(f"  - Transferred coils (order changed):   {len(transferred)}  -> purple", json_mode, verbose)
+        log(f"  - Updated coils  (attribute changed):  {len(attribute_updated)}  -> orange", json_mode, verbose)
         log(f"  - New coils      (schedule+Yehui):     {len(new_coils)}  -> yellow", json_mode, verbose)
         log(f"  - Schedule matched:                   {matched_count}  -> green", json_mode, verbose)
         log(f"  - Schedule unmatched:                  {unmatched_count}  -> red", json_mode, verbose)

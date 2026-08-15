@@ -111,6 +111,7 @@ class TestCliMain(unittest.TestCase):
         processor.build_coil_set.return_value = set()
         processor.build_order_has_yehui.return_value = set()
         processor.build_order_in_customer_sheet.return_value = set()
+        processor.build_order_set_from_groups.return_value = set()
         processor.group_by_customer.return_value = {}
         mock_processor.return_value = processor
         
@@ -118,7 +119,7 @@ class TestCliMain(unittest.TestCase):
         reader = MagicMock()
         reader.find_template_sheet.return_value = (MagicMock(), [])
         reader.read_schedule_data.return_value = ({}, {})
-        reader.read_yehui_data.return_value = ({}, {})
+        reader.read_yehui_data.return_value = ({}, {}, [])
         reader.read_customer_data.return_value = ([], [])
         mock_reader.return_value = reader
         
